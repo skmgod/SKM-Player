@@ -50,7 +50,8 @@ Window {
         { id: "fwd30", label: "30초 앞으로", key: "Shift+Right" },
         { id: "volUp", label: "볼륨 올리기", key: "Up" },
         { id: "volDown", label: "볼륨 내리기", key: "Down" },
-        { id: "fullscreen", label: "전체화면", key: "F" },
+        { id: "fullscreen", label: "전체화면 (화면 크게)", key: "Enter" },
+        { id: "capture", label: "현재 화면 캡처 (원본 크기)", key: "C" },
         { id: "zoomIn", label: "확대", key: "+" },
         { id: "zoomOut", label: "축소", key: "-" },
         { id: "zoomReset", label: "확대 · 이동 초기화", key: "0" },
@@ -267,6 +268,11 @@ Window {
     function rotate() { rot = (rot + 90) % 360; osd("회전 " + rot + "°") }
     function flip() { flipped = !flipped; osd(flipped ? "좌우반전" : "반전 해제") }
     function cycleAspect() { aspectIdx = (aspectIdx + 1) % aspects.length; osd("화면 비율 " + aspects[aspectIdx][0]) }
+    function capture() {
+        if (player.source.toString() === "") { osd("재생 중인 영상이 없습니다"); return }
+        var p = backend.capture(vo.videoSink, fileName, Math.round(player.position))
+        osd(p !== "" ? "캡처 저장됨 · 사진\\Player64X\\" + p : "캡처에 실패했습니다")
+    }
     function setSpeed(r) {
         var i = speeds.indexOf(r)
         if (i < 0) return
@@ -389,6 +395,7 @@ Window {
         case "volUp": setVolume(audio.volume + 0.05); break
         case "volDown": setVolume(audio.volume - 0.05); break
         case "fullscreen": toggleFs(); break
+        case "capture": capture(); break
         case "zoomIn": zoomBy(1.25); break
         case "zoomOut": zoomBy(0.8); break
         case "zoomReset": resetZoom(); osd("보기 초기화"); break
@@ -752,6 +759,8 @@ Window {
             Btn { label: Math.round(win.zoom * 100) + "%"; width: 62; anchors.verticalCenter: parent.verticalCenter; on: win.zoom !== 1
                   onClicked: { win.resetZoom(); win.osd("보기 초기화") } }
             Btn { label: "+"; anchors.verticalCenter: parent.verticalCenter; onClicked: win.zoomBy(1.25) }
+            Item { width: 8; height: 1 }
+            Btn { label: "캡처"; anchors.verticalCenter: parent.verticalCenter; onClicked: win.capture() }
         }
 
         // ---- 오른쪽: 속도 / 자막 / 볼륨 / 전체화면 ----
@@ -879,6 +888,9 @@ Window {
         "<h3>구간 반복 (A–B)</h3>" +
         "<p>• <b>구간반복</b> 버튼을 <b>시작 지점</b>에서 한 번, <b>끝 지점</b>에서 한 번 더 누르면 그 구간이 계속 반복됩니다. 한 번 더 누르면 해제됩니다.<br>" +
         "• 탐색 막대에 노란색으로 반복 구간이 표시됩니다.</p>" +
+        "<h3>캡처 · 전체화면</h3>" +
+        "<p>• <b>캡처</b> 버튼(또는 <b>C</b> 키): 지금 보이는 장면을 영상 <b>원본 크기</b> 그대로 PNG 로 저장합니다. 저장 위치: <b>사진 \\ Player64X</b> 폴더<br>" +
+        "• <b>Enter</b> 키(또는 더블클릭, F 키): 화면을 크게(전체화면). <b>Esc</b> 로 돌아옵니다.</p>" +
         "<h3>자막</h3>" +
         "<p>• 영상과 같은 이름의 자막 파일(SRT · SMI · VTT · ASS)이 있으면 자동으로 불러옵니다. 자막 파일을 창에 끌어놓아도 됩니다.<br>" +
         "• <b>자막</b> 메뉴에서 언어 선택, 글자 크기, 싱크(±0.5초)를 조절하세요. 영상에 내장된 자막도 고를 수 있습니다.<br>" +
@@ -1103,6 +1115,8 @@ Window {
                 return
             }
             var act = win.keyToAction[name]
+            // 다른 동작에 배정되지 않았다면 F 도 전체화면 (기존 습관 유지)
+            if (act === undefined && name === "F") act = "fullscreen"
             if (act === undefined) { e.accepted = false; return }
             if (win.helpOpen && act !== "help") return
             win.doAction(act)

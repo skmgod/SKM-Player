@@ -16,6 +16,7 @@ FFmpeg 엔진(Qt Multimedia)으로 **8K · HEVC · AV1 · H.264** 를 별도 코
 - **재생목록**: 여러 파일·폴더를 끌어놓으면 자연 정렬로 목록 생성, 이전/다음, 반복, 셔플, 자동 다음 재생
 - **자막**: SRT · SMI · VTT · ASS 자동 로딩, 언어(트랙) 선택, 내장 자막, 글자 크기·싱크 조절
 - **실시간 자동 자막**: Windows 11 실시간 캡션 연결
+- **캡처**: 지금 장면을 영상 원본 크기 PNG 로 `사진\Player64X` 에 저장 (`C`)
 - **단축키 설정**: 모든 단축키를 직접 바꾸고 자동 저장 (`F1` → 단축키 설정)
 - **사용 설명서**: 프로그램 안에서 `F1`
 
@@ -27,7 +28,8 @@ FFmpeg 엔진(Qt Multimedia)으로 **8K · HEVC · AV1 · H.264** 를 별도 코
 | 5초 뒤로 / 앞으로 | `←` / `→` | 영상 이동 | `Ctrl + 방향키` |
 | 30초 뒤로 / 앞으로 | `Shift + ←/→` | 회전 / 좌우반전 / 비율 | `R` / `H` / `A` |
 | 볼륨 | `↑` / `↓` | 슬로우 모션 | `Z` |
-| 전체화면 | `F` | 구간 반복 | `B` |
+| 전체화면(화면 크게) | `Enter` (`F` 도 가능) | 구간 반복 | `B` |
+| 현재 화면 캡처 | `C` | | |
 | 다음 / 이전 영상 | `N` / `P` | 자막 메뉴 | `S` |
 | 파일 열기 | `O` | 도움말 | `F1` |
 
@@ -50,6 +52,14 @@ pyinstaller --noconfirm --windowed --name Player64X_8K --icon icon.ico ^
   --hidden-import PySide6.QtQml --hidden-import PySide6.QtNetwork --hidden-import PySide6.QtOpenGL ^
   player.py
 ```
+
+## 기본 플레이어로 지정
+
+1. `install\register_default_player.bat` 을 더블클릭 → Player 64X 가 Windows 기본 앱 목록에 등록됩니다 (현재 사용자만, 관리자 권한 불필요).
+2. 열리는 **설정 → 기본 앱** 에서 `Player 64X` 를 고르고 `.mp4`, `.mkv` 등 원하는 확장자에 지정하세요.
+3. 되돌리려면 `install\unregister_default_player.ps1` 실행.
+
+> Windows 는 보안상 프로그램이 기본 앱을 강제로 바꾸지 못하게 막아 두어서, 마지막 선택은 설정 창에서 직접 해야 합니다.
 
 ## 구성
 

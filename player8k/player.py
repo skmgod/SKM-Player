@@ -5,8 +5,9 @@ import sys
 
 os.environ.setdefault("QT_MEDIA_BACKEND", "ffmpeg")
 
-from PySide6.QtCore import QObject, Property, QUrl, Slot
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtCore import QObject, Property, QStandardPaths, QUrl, Slot
+from PySide6.QtGui import QFont, QIcon, QImage
+from PySide6.QtMultimedia import QVideoSink
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QFileDialog
 
@@ -25,7 +26,7 @@ def base_dir():
     return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 
 
-VIDEO_EXTS = (".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".ts", ".m2ts", ".mts",
+VIDEO_EXTS = (".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".ts", ".m2ts", ".mts", ".f4v", ".3g2", ".asf", ".rm", ".rmvb", ".mxf",
               ".flv", ".m4v", ".mpg", ".mpeg", ".3gp", ".ogv", ".vob", ".divx")
 
 
@@ -93,6 +94,37 @@ class Backend(QObject):
             return subs.load_file(QUrl(url).toLocalFile())
         except Exception:
             return []
+
+    @Slot(QVideoSink, str, int, result=str)
+    def capture(self, sink, name, ms):
+        """현재 프레임을 원본 해상도 PNG 로 저장하고 파일 이름을 돌려준다."""
+        try:
+            frame = sink.videoFrame()
+            if not frame.isValid():
+                print("capture: 유효한 프레임 없음", file=sys.stderr)
+                return ""
+            img = frame.toImage()
+            if img.isNull():
+                print("capture: 프레임 변환 실패", frame.pixelFormat(), frame.size(), file=sys.stderr)
+                return ""
+            folder = os.path.join(QStandardPaths.writableLocation(QStandardPaths.PicturesLocation), "Player64X")
+            os.makedirs(folder, exist_ok=True)
+            stem = re.sub(r'[\\/:*?"<>|]', "_", os.path.splitext(name)[0]) or "capture"
+            t = f"{ms // 3600000:02d}-{ms // 60000 % 60:02d}-{ms // 1000 % 60:02d}-{ms % 1000:03d}"
+            path = os.path.join(folder, f"{stem}_{t}.png")
+            n = 2
+            while os.path.exists(path):
+                path = os.path.join(folder, f"{stem}_{t}_{n}.png")
+                n += 1
+            if img.hasAlphaChannel():
+                img = img.convertToFormat(QImage.Format_RGB32)  # 불투명 영상: 알파 제거
+            if img.save(path, "PNG", 80):
+                return os.path.basename(path)
+            print("capture: 저장 실패", path, img.format(), img.size(), file=sys.stderr)
+            return ""
+        except Exception as e:  # 캡처 실패 원인은 콘솔에 남김
+            print("capture failed:", repr(e), file=sys.stderr)
+            return ""
 
     @Slot(result=str)
     def loadKeys(self):

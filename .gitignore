@@ -1,0 +1,12 @@
+# 빌드 결과물
+bin/
+obj/
+dist/
+dist8k/
+build/
+*.spec
+__pycache__/
+*.pyc
+
+# 로컬 메모
+읽어보세요.txt

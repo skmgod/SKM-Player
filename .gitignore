@@ -10,3 +10,6 @@ __pycache__/
 
 # 로컬 메모
 읽어보세요.txt
+
+# AI 모델 (install/get_models.ps1 로 내려받기)
+player8k/models/

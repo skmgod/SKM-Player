@@ -12,6 +12,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QFileDialog
 
 import subs
+from ai_engine import AiEngine
 
 FILTER = ("동영상 (*.mp4 *.mkv *.avi *.mov *.wmv *.webm *.ts *.m2ts *.mts *.flv *.m4v *.mpg *.mpeg *.3gp);;"
           "모든 파일 (*.*)")
@@ -19,7 +20,8 @@ SUB_FILTER = "자막 (*.srt *.smi *.sami *.vtt *.ass *.ssa);;모든 파일 (*.*)
 LIVE_CAPTIONS = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "System32", "LiveCaptions.exe")
 
 
-KEYS_FILE = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Player64X", "keys.json")
+CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Player64X")
+KEYS_FILE = os.path.join(CONFIG_DIR, "keys.json")
 
 
 def base_dir():
@@ -95,8 +97,8 @@ class Backend(QObject):
         except Exception:
             return []
 
-    @Slot(QVideoSink, str, int, result=str)
-    def capture(self, sink, name, ms):
+    @Slot(QVideoSink, str, int, str, result=str)
+    def capture(self, sink, name, ms, fmt):
         """현재 프레임을 원본 해상도 PNG 로 저장하고 파일 이름을 돌려준다."""
         try:
             frame = sink.videoFrame()
@@ -111,20 +113,39 @@ class Backend(QObject):
             os.makedirs(folder, exist_ok=True)
             stem = re.sub(r'[\\/:*?"<>|]', "_", os.path.splitext(name)[0]) or "capture"
             t = f"{ms // 3600000:02d}-{ms // 60000 % 60:02d}-{ms // 1000 % 60:02d}-{ms % 1000:03d}"
-            path = os.path.join(folder, f"{stem}_{t}.png")
+            jpg = str(fmt).lower() in ("jpg", "jpeg")
+            ext = "jpg" if jpg else "png"
+            path = os.path.join(folder, f"{stem}_{t}.{ext}")
             n = 2
             while os.path.exists(path):
-                path = os.path.join(folder, f"{stem}_{t}_{n}.png")
+                path = os.path.join(folder, f"{stem}_{t}_{n}.{ext}")
                 n += 1
             if img.hasAlphaChannel():
                 img = img.convertToFormat(QImage.Format_RGB32)  # 불투명 영상: 알파 제거
-            if img.save(path, "PNG", 80):
+            if img.save(path, "JPG", 95) if jpg else img.save(path, "PNG", 80):
                 return os.path.basename(path)
             print("capture: 저장 실패", path, img.format(), img.size(), file=sys.stderr)
             return ""
         except Exception as e:  # 캡처 실패 원인은 콘솔에 남김
             print("capture failed:", repr(e), file=sys.stderr)
             return ""
+
+    @Slot(str, result=str)
+    def loadConfig(self, name):
+        try:
+            with open(os.path.join(CONFIG_DIR, os.path.basename(name)), "r", encoding="utf-8") as f:
+                return f.read()
+        except OSError:
+            return "{}"
+
+    @Slot(str, str)
+    def saveConfig(self, name, text):
+        try:
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+            with open(os.path.join(CONFIG_DIR, os.path.basename(name)), "w", encoding="utf-8") as f:
+                f.write(text)
+        except OSError:
+            pass
 
     @Slot(result=str)
     def loadKeys(self):
@@ -165,7 +186,10 @@ def main():
 
     backend = Backend(to_urls(expand_paths(sys.argv[1:])))
     engine = QQmlApplicationEngine()
+    ai = AiEngine()
+    app.aboutToQuit.connect(ai.shutdown)
     engine.rootContext().setContextProperty("backend", backend)
+    engine.rootContext().setContextProperty("ai", ai)
     engine.load(QUrl.fromLocalFile(os.path.join(base_dir(), "Main.qml")))
     if not engine.rootObjects():
         sys.exit(1)

@@ -4,7 +4,7 @@ import QtMultimedia
 Window {
     id: win
     width: 1280; height: 760
-    minimumWidth: 1000; minimumHeight: 520
+    minimumWidth: 1060; minimumHeight: 520
     visible: true
     color: "#07080C"
     flags: Qt.Window | Qt.FramelessWindowHint | (cfgGet("onTop") ? Qt.WindowStaysOnTopHint : 0)
@@ -44,6 +44,9 @@ Window {
     property int aiModel: 0             // 0 실사, 1 애니
     property bool aiShow: false         // AI 프레임이 실제로 화면에 나오는 중
 
+    property bool ctxOpen: false        // 오른쪽 버튼 메뉴
+    property real ctxX: 0
+    property real ctxY: 0
     property bool helpOpen: false
     property int helpTab: 0             // 0 사용 설명서, 1 단축키 설정
     property string capId: ""           // 단축키 입력 대기 중인 동작
@@ -89,6 +92,10 @@ Window {
         { id: "liveCaps", label: "실시간 자동 자막 켜기", key: "L" },
         { id: "subEarlier", label: "자막 0.5초 빠르게", key: "," },
         { id: "subLater", label: "자막 0.5초 늦게", key: "." },
+        { id: "panelBigger", label: "조작 패널 크게", key: "Ctrl+]" },
+        { id: "panelSmaller", label: "조작 패널 작게", key: "Ctrl+[" },
+        { id: "panelOpaque", label: "조작 패널 더 진하게", key: "Alt+]" },
+        { id: "panelClear", label: "조작 패널 더 투명하게", key: "Alt+[" },
         { id: "repeat", label: "반복 재생 바꾸기 (끔 → 전체 → 한 곡)", key: "Ctrl+R" },
         { id: "settings", label: "설정 열기", key: "F2" },
         { id: "help", label: "사용 설명서", key: "F1" }
@@ -113,9 +120,14 @@ Window {
           choices: [[0.5, "0.5x"], [0.75, "0.75x"], [1, "1x"], [1.25, "1.25x"], [1.5, "1.5x"], [2, "2x"]] },
         { key: "skipShort", title: "짧게 건너뛰기", desc: "← → 키로 이동하는 시간", type: "step", def: 5, min: 1, max: 60, step: 1, unit: "초" },
         { key: "skipLong", title: "길게 건너뛰기", desc: "Shift + ← → 키로 이동하는 시간", type: "step", def: 30, min: 5, max: 300, step: 5, unit: "초" },
+        { key: "rememberPlaylist", title: "재생목록 기억", desc: "끌어놓거나 연 영상 목록을 저장해서, 다음에 켜도 그대로 남김", type: "toggle", def: true },
         { key: "rememberVolume", title: "볼륨 기억", desc: "다음에 켜도 마지막 볼륨 유지", type: "toggle", def: true },
         { sec: "화면" },
+        { key: "seekPreview", title: "탐색 막대 미리보기", desc: "막대 위에 마우스를 올리면 그 시간의 장면을 작게 보여줌", type: "toggle", def: true },
         { key: "hideSec", title: "조작바 자동 숨김", desc: "마우스를 가만히 두면 숨겨지기까지의 시간", type: "step", def: 3, min: 1, max: 15, step: 1, unit: "초" },
+        { key: "uiScale", title: "조작 패널 크기", desc: "아래쪽 조작 패널 전체 크기 (70~110%)", type: "step", def: 100, min: 70, max: 110, step: 10, unit: "%" },
+        { key: "barAlpha", title: "조작 패널 투명도", desc: "낮을수록 투명해서 영상이 비쳐 보임 (20~100%)", type: "step", def: 85, min: 20, max: 100, step: 5, unit: "%" },
+        { key: "smallOnExit", title: "전체화면을 끝내면 작은 창으로", desc: "Esc 로 전체화면을 나올 때 작은 창(1100x620)으로. 끄면 이전 창 상태로", type: "toggle", def: true },
         { key: "onTop", title: "항상 위에 표시", desc: "다른 창 위에 계속 띄워 둠", type: "toggle", def: false },
         { sec: "자막" },
         { key: "autoSubs", title: "자막 자동 불러오기", desc: "영상과 같은 이름의 자막 파일을 자동으로 사용", type: "toggle", def: true },
@@ -123,13 +135,14 @@ Window {
         { sec: "화질 · 캡처" },
         { key: "rememberQuality", title: "화질 설정 기억", desc: "GPU 선명화 값과 AI 모델을 다음에도 유지", type: "toggle", def: true },
         { key: "aiAtStart", title: "시작할 때 실시간 AI 켜기", desc: "NVIDIA GPU 에서 AI 엔진을 바로 준비", type: "toggle", def: false },
+        { key: "capDir", title: "캡처 저장 위치", desc: "캡처한 사진이 저장되는 폴더 (비우면 사진\\Player64X)", type: "folder", def: "" },
         { key: "capFmt", title: "캡처 저장 형식", desc: "PNG 는 무손실, JPG 는 용량이 작음", type: "choice", def: "png",
           choices: [["png", "PNG"], ["jpg", "JPG"]] }
     ]
     property var cfg: ({})
     property bool cfgLoaded: false
     readonly property var cfgDefaults: {
-        var d = { volume: 0.8, qEnhance: false, qSharp: 0.5, qDenoise: 0.15, qContrast: 1.0, qSaturation: 1.0, qAiModel: 0, resumeMap: ({}) }
+        var d = { volume: 0.8, qEnhance: false, qSharp: 0.5, qDenoise: 0.15, qContrast: 1.0, qSaturation: 1.0, qAiModel: 0, resumeMap: ({}), playlist: [], plIdx: 0 }
         for (var i = 0; i < settingDefs.length; ++i)
             if (settingDefs[i].key !== undefined) d[settingDefs[i].key] = settingDefs[i].def
         return d
@@ -148,17 +161,29 @@ Window {
         if (k === "repeat") { if (repeatMode !== cfgGet("repeat")) repeatMode = cfgGet("repeat") }
         else if (k === "shuffle") { if (shuffle !== cfgGet("shuffle")) shuffle = cfgGet("shuffle") }
         else if (k === "hideSec") hideTimer.interval = cfgGet("hideSec") * 1000
+        else if (k === "capDir") backend.setCaptureDir(cfgGet("capDir"))
         else if (k === "subSize") { if (subSize !== cfgGet("subSize")) subSize = cfgGet("subSize") }
         else if (k === "speed") { var i = speeds.indexOf(cfgGet("speed")); if (i >= 0) { speedIdx = i; player.playbackRate = speeds[i] } }
     }
     function applyAllCfg() {
-        var keys = ["repeat", "shuffle", "hideSec", "subSize", "speed"]
+        var keys = ["repeat", "shuffle", "hideSec", "subSize", "speed", "capDir"]
         for (var i = 0; i < keys.length; ++i) applyCfg(keys[i])
         audio.volume = cfgGet("rememberVolume") ? cfgGet("volume") : 0.8
         if (cfgGet("rememberQuality")) {
             enhanceOn = cfgGet("qEnhance"); fxSharp = cfgGet("qSharp"); fxDenoise = cfgGet("qDenoise")
             fxContrast = cfgGet("qContrast"); fxSaturation = cfgGet("qSaturation"); aiModel = cfgGet("qAiModel")
         }
+    }
+    function restorePlaylist() {
+        var saved = cfgGet("playlist")
+        if (!saved || saved.length === 0) return
+        var l = backend.existingUrls(saved)          // 지워졌거나 연결이 빠진 파일은 건너뜀
+        if (l.length === 0) return
+        playlist = l
+        plIdx = Math.max(0, Math.min(cfgGet("plIdx"), l.length - 1))
+        openUrl(l[plIdx])
+        pendingPause = true                          // 켜자마자 소리가 나지 않게 멈춘 상태로 시작
+        osd("재생목록 " + l.length + "개를 불러왔습니다")
     }
     function loadCfg() {
         try { cfg = JSON.parse(backend.loadConfig("settings.json") || "{}") } catch (err) { cfg = {} }
@@ -175,6 +200,8 @@ Window {
     Timer { id: cfgSaveTimer; interval: 500; onTriggered: win.saveCfgNow() }
 
     // 화면에서 직접 바꾼 값도 설정에 기억
+    onPlaylistChanged: if (cfgLoaded && cfgGet("rememberPlaylist")) setCfg("playlist", playlist.slice(0, 500))
+    onPlIdxChanged: if (cfgLoaded && cfgGet("rememberPlaylist")) setCfg("plIdx", plIdx)
     onRepeatModeChanged: if (cfgLoaded) setCfg("repeat", repeatMode)
     onShuffleChanged: if (cfgLoaded) setCfg("shuffle", shuffle)
     onSubSizeChanged: if (cfgLoaded) setCfg("subSize", subSize)
@@ -219,6 +246,20 @@ Window {
         playlist = urls
         if (urls.length > 1) { plOpen = true; showChrome() }
         playTo(start || 0)
+    }
+    function dropVideos(urls) {
+        if (!urls || urls.length === 0) return
+        var cur = playlist.slice(), first = -1
+        for (var i = 0; i < urls.length; ++i) {
+            var k = cur.indexOf(urls[i])
+            if (k < 0) { cur.push(urls[i]); k = cur.length - 1 }
+            if (first < 0) first = k
+        }
+        playlist = cur
+        plOpen = true
+        showChrome()
+        playTo(first)
+        osd(urls.length + "개를 재생목록에 넣었습니다")
     }
     function addToPlaylist(urls) {
         if (!urls || urls.length === 0) return
@@ -271,8 +312,16 @@ Window {
     // ---- 화면 맞춤 계산 ----
     readonly property real sw: stage.width
     readonly property real sh: stage.height
-    readonly property real vw: vo.sourceRect.width
-    readonly property real vh: vo.sourceRect.height
+    property int vRot: 0                // 영상 자체의 회전(0/90/180/270) — 세로로 찍은 핸드폰 영상 등
+    readonly property real vw: vRot % 180 !== 0 ? vo.sourceRect.height : vo.sourceRect.width
+    readonly property real vh: vRot % 180 !== 0 ? vo.sourceRect.width : vo.sourceRect.height
+    function refreshRot() {
+        var r = backend.frameRotation(vo.videoSink)
+        if (r >= 0 && r !== vRot) vRot = r
+    }
+    Connections { target: vo; function onSourceRectChanged() { win.refreshRot() } }
+    Timer { id: rotTimer; interval: 300; repeat: true; property int n: 0
+            onTriggered: { win.refreshRot(); if (++n >= 6) { stop(); n = 0 } } }
     readonly property real aStretch: {
         var r = aspects[aspectIdx][1]
         if (r === 0 || vw <= 0 || vh <= 0) return 1
@@ -354,6 +403,8 @@ Window {
         subSel = -1
         subOffset = 0
         loopA = -1; loopB = -1
+        rotTimer.restart()
+        previewPreload.restart()
         player.source = u
         var s = decodeURIComponent(u.toString())
         fileName = s.substring(s.lastIndexOf("/") + 1)
@@ -397,7 +448,7 @@ Window {
     function capture() {
         if (player.source.toString() === "") { osd("재생 중인 영상이 없습니다"); return }
         var p = backend.capture(vo.videoSink, fileName, Math.round(player.position), cfgGet("capFmt"))
-        osd(p !== "" ? "캡처 저장됨 · 사진\\Player64X\\" + p : "캡처에 실패했습니다")
+        osd(p !== "" ? "캡처 저장됨 · " + p : "캡처에 실패했습니다")
     }
     // ---- 화질 개선 동작 ----
     function toggleEnhance() { enhanceOn = !enhanceOn; osd(enhanceOn ? "GPU 선명화 켬" : "GPU 선명화 끔") }
@@ -431,6 +482,54 @@ Window {
         function onCaptureDone(msg) { win.osd(msg) }
     }
 
+    // ---- 오른쪽 버튼 메뉴 ----
+    function openCtx(x, y) {
+        subMenuOpen = false; qualityOpen = false
+        ctxX = Math.max(6, Math.min(x, win.width - 262))
+        ctxY = Math.max(6, Math.min(y, win.height - ctxMenu.height - 6))
+        ctxOpen = true
+        showChrome()
+    }
+    function revealFile() {
+        if (player.source.toString() === "") { osd("재생 중인 파일이 없습니다"); return }
+        backend.revealFile(player.source.toString())
+    }
+    function ctxDo(id) {
+        ctxOpen = false
+        // 파일 열기 창처럼 오래 걸리는 동작은 메뉴 처리가 끝난 뒤에 실행 (메뉴 항목이 사라진 뒤 돌아와 꺼지는 문제 방지)
+        Qt.callLater(function () {
+            switch (id) {
+            case "add": addDialog(); break
+            case "reveal": revealFile(); break
+            case "subfile": openSubDialog(); break
+            default: doAction(id)
+            }
+        })
+    }
+    // 항목 목록은 고정, 바뀌는 글자(재생/일시정지 등)는 ctxLabel 이 따로 계산한다
+    function ctxLabel(it) {
+        if (it.id === "playPause") return player.playbackState === MediaPlayer.PlayingState ? "일시정지" : "재생"
+        if (it.id === "fullscreen") return fs ? "창 모드" : "전체화면"
+        if (it.id === "repeat") return "반복 재생: " + repeatNames[repeatMode]
+        return it.label
+    }
+    readonly property var ctxItems: [
+        { id: "open", label: "파일 열기…" },
+        { id: "add", label: "재생목록에 파일 추가…" },
+        { id: "reveal", label: "파일 위치 열기 (탐색기)" },
+        { sep: true },
+        { id: "playPause", label: "재생" },
+        { id: "fullscreen", label: "전체화면" },
+        { id: "repeat", label: "반복 재생" },
+        { sep: true },
+        { id: "subfile", label: "자막 파일 열기…" },
+        { id: "capture", label: "현재 화면 캡처" },
+        { id: "quality", label: "화질 개선" },
+        { sep: true },
+        { id: "settings", label: "설정" },
+        { id: "help", label: "도움말 · 사용 설명서" }
+    ]
+
     function setSpeed(r) {
         var i = speeds.indexOf(r)
         if (i < 0) return
@@ -462,8 +561,20 @@ Window {
     }
     function setVolume(v) { audio.volume = Math.max(0, Math.min(1, v)); osd("볼륨 " + Math.round(audio.volume * 100)) }
     function toggleFs() {
-        if (fs) { if (prevMax) showMaximized(); else showNormal() }
-        else { prevMax = (visibility === Window.Maximized); showFullScreen() }
+        if (fs) {
+            if (cfgGet("smallOnExit")) { showNormal(); smallTimer.restart() }
+            else if (prevMax) showMaximized()
+            else showNormal()
+        } else { prevMax = (visibility === Window.Maximized); showFullScreen() }
+    }
+    Timer {
+        id: smallTimer
+        interval: 80
+        onTriggered: {
+            win.width = 1100; win.height = 620
+            win.x = Math.max(0, Math.round((Screen.width - 1100) / 2))
+            win.y = Math.max(0, Math.round((Screen.height - 620) / 2))
+        }
     }
     function toggleMax() { if (visibility === Window.Maximized) showNormal(); else showMaximized() }
 
@@ -580,10 +691,44 @@ Window {
         case "liveCaps": startLive(); break
         case "subEarlier": subOffset -= 500; osd("자막 싱크 " + (subOffset / 1000).toFixed(1) + "s"); break
         case "subLater": subOffset += 500; osd("자막 싱크 " + (subOffset / 1000).toFixed(1) + "s"); break
+        case "panelBigger": setCfg("uiScale", Math.min(110, cfgGet("uiScale") + 10)); osd("조작 패널 크기 " + cfgGet("uiScale") + "%"); break
+        case "panelSmaller": setCfg("uiScale", Math.max(70, cfgGet("uiScale") - 10)); osd("조작 패널 크기 " + cfgGet("uiScale") + "%"); break
+        case "panelOpaque": setCfg("barAlpha", Math.min(100, cfgGet("barAlpha") + 10)); osd("조작 패널 투명도 " + cfgGet("barAlpha") + "%"); break
+        case "panelClear": setCfg("barAlpha", Math.max(20, cfgGet("barAlpha") - 10)); osd("조작 패널 투명도 " + cfgGet("barAlpha") + "%"); break
         case "repeat": cycleRepeat(); break
         case "settings": helpOpen = !(helpOpen && helpTab === 2); helpTab = 2; capId = ""; break
         case "help": helpOpen = !helpOpen; helpTab = 0; capId = ""; break
         }
+    }
+
+    property bool previewOn: false
+    property real previewPos: 0
+    // 영상을 열고 잠시 뒤(재생이 안정된 뒤) 미리보기 재생기를 미리 준비 — 마우스를 올렸을 때 바로 장면이 나오도록.
+    // 8K 같은 매우 큰 영상은 부담이 커서 처음 마우스를 올릴 때 준비한다.
+    Timer {
+        id: previewPreload
+        interval: 1500
+        onTriggered: if (cfgGet("seekPreview") && vw > 0 && vw * vh <= 8300000) previewOn = true
+    }
+    MediaPlayer {
+        id: previewPlayer
+        source: (win.previewOn && win.cfgGet("seekPreview")) ? player.source : ""
+        videoOutput: pvo
+        property bool ready: false          // 새 파일이 로드되어 일시정지된 상태인지
+        onSourceChanged: ready = false
+        onMediaStatusChanged: {
+            // 로드 직후 딱 한 번만 일시정지 (pause/seek 가 상태를 다시 바꿔도 반복하지 않음)
+            if (!ready && mediaStatus === MediaPlayer.LoadedMedia) {
+                ready = true
+                pause()
+                setPosition(win.previewPos)
+            }
+        }
+    }
+    Timer {
+        id: previewTimer
+        interval: 90
+        onTriggered: if (previewPlayer.ready) previewPlayer.setPosition(win.previewPos)
     }
 
     MediaPlayer {
@@ -594,6 +739,7 @@ Window {
         onErrorOccurred: function (error, errorString) { win.errorText = errorString }
         onMediaStatusChanged: {
             if (mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia) {
+                win.refreshRot()
                 if (win.pendingResume > 0) { var t = win.pendingResume; win.pendingResume = 0; setPosition(t); win.osd("이어보기 " + win.fmt(t)) }
                 if (win.pendingPause) { win.pendingPause = false; pause() }
             }
@@ -728,13 +874,15 @@ Window {
             id: mouse
             anchors.fill: parent
             hoverEnabled: true
-            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
             cursorShape: win.chrome ? Qt.ArrowCursor : Qt.BlankCursor
             property real sx; property real sy; property real px0; property real py0
             property bool moved: false
             onPressed: function (m) {
                 win.subMenuOpen = false
                 win.qualityOpen = false
+                if (m.button === Qt.RightButton) { win.openCtx(m.x, m.y); return }
+                win.ctxOpen = false
                 if (m.button === Qt.MiddleButton) { win.resetZoom(); win.osd("보기 초기화"); return }
                 sx = m.x; sy = m.y; px0 = win.panX; py0 = win.panY; moved = false
             }
@@ -761,7 +909,7 @@ Window {
         visible: win.subText !== ""
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: win.chrome ? 176 : 44
+        anchors.bottomMargin: win.chrome ? barRef.height + 34 : 44
         width: Math.min(parent.width - 60, subLabel.implicitWidth + 36)
         height: subLabel.implicitHeight + 16
         radius: 10
@@ -790,7 +938,7 @@ Window {
             for (var i = 0; i < d.urls.length; ++i) all.push(d.urls[i].toString())
             // 폴더/여러 파일 -> 동영상만 골라 자연 정렬한 재생목록
             vids = backend.expandUrls(all.filter(function (u) { return !subRe.test(u.toLowerCase()) }))
-            if (vids.length > 0) { win.setPlaylist(vids, 0); return }
+            if (vids.length > 0) { win.dropVideos(vids); return }
             for (var j = 0; j < all.length; ++j)
                 if (subRe.test(all[j].toLowerCase())) win.addSubs(backend.loadSubtitleUrl(all[j]))
         }
@@ -802,10 +950,10 @@ Window {
         property bool on: false
         property color tint: win.cInk
         signal clicked
-        implicitWidth: Math.max(t.implicitWidth + 24, 34)
-        height: 34; radius: 9
+        implicitWidth: Math.max(t.implicitWidth + 18, 30)
+        height: 30; radius: 8
         color: ma.pressed ? "#33FFFFFF" : ma.containsMouse ? win.cHover : (on ? "#244DA3FF" : "transparent")
-        Text { id: t; anchors.centerIn: parent; color: parent.on ? win.cAccent : parent.tint; font.pixelSize: 13 }
+        Text { id: t; anchors.centerIn: parent; color: parent.on ? win.cAccent : parent.tint; font.pixelSize: 12 }
         MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; onClicked: parent.clicked() }
     }
 
@@ -861,30 +1009,48 @@ Window {
         }
     }
 
-    // ================= 하단 패널 =================
+    // ================= 하단 패널 (한 줄 · 크기/투명도 조절) =================
+    readonly property real ui: cfgGet("uiScale") / 100
+    readonly property real barAlpha: cfgGet("barAlpha") / 100
+
+    // 조작 패널이 화면에서 실제로 차지하는 영역(크기 조절 반영) — 메뉴들이 이 위에 붙는다
+    Item {
+        id: barRef
+        width: bar.width * win.ui; height: bar.height * win.ui
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 14
+    }
+
     Rectangle {
         id: bar
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 18
-        width: Math.min(parent.width - 36, 1100)
-        height: 140
-        radius: 18
-        color: win.cPanel
-        border.color: win.cLine
+        anchors.bottomMargin: 14
+        width: Math.min((parent.width - 36) / win.ui, 1100)
+        height: 70
+        scale: win.ui
+        transformOrigin: Item.Bottom
+        radius: 14
+        color: Qt.rgba(0.063, 0.071, 0.094, win.barAlpha)
+        border.color: Qt.rgba(1, 1, 1, 0.15 * win.barAlpha)
         visible: win.chrome
 
         MouseArea { id: barArea; anchors.fill: parent; hoverEnabled: true; onPositionChanged: win.showChrome() }
+        // 안쪽 버튼·탐색 막대가 마우스를 받아도 '패널 위에 있음'을 놓치지 않도록
+        HoverHandler { id: barHover; onHoveredChanged: if (hovered) win.showChrome() }
 
         // ---- 탐색 막대 ----
-        Row {
+        Item {
             id: seekRow
-            anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 18; rightMargin: 18; topMargin: 12 }
-            height: 22; spacing: 12
-            Text { width: 54; height: parent.height; verticalAlignment: Text.AlignVCenter; color: win.cDim; font.pixelSize: 12; text: win.fmt(player.position) }
+            anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 14; rightMargin: 14; topMargin: 6 }
+            height: 20
+            Text { id: tCur; width: 46; height: parent.height; verticalAlignment: Text.AlignVCenter; color: win.cDim; font.pixelSize: 11; text: win.fmt(player.position) }
+            Text { id: tTot; anchors.right: parent.right; width: 46; height: parent.height; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter
+                   color: win.cDim; font.pixelSize: 11; text: win.fmt(player.duration) }
             Item {
                 id: seekItem
-                width: parent.width - 54 * 2 - 24; height: parent.height
+                anchors { left: tCur.right; right: tTot.left; leftMargin: 6; rightMargin: 6; top: parent.top; bottom: parent.bottom }
                 property real hoverX: -1
                 Rectangle {
                     id: track
@@ -908,17 +1074,32 @@ Window {
                 }
                 Rectangle {
                     visible: seekMa.containsMouse || seekMa.pressed
-                    width: 14; height: 14; radius: 7; color: "white"
+                    width: 13; height: 13; radius: 6.5; color: "white"
                     anchors.verticalCenter: parent.verticalCenter
-                    x: (player.duration > 0 ? track.width * player.position / player.duration : 0) - 7
+                    x: (player.duration > 0 ? track.width * player.position / player.duration : 0) - 6.5
                 }
                 Rectangle {
+                    id: tipBox
                     visible: seekMa.containsMouse && player.duration > 0
+                    readonly property bool hasPrev: win.previewOn && win.cfgGet("seekPreview") && win.vw > 0 && win.vh > 0
+                    readonly property real ps: win.vw > 0 ? Math.min(176 / win.vw, 150 / win.vh) : 0   // 회전 반영한 비율 유지
+                    readonly property real pw: hasPrev ? Math.round(win.vw * ps) : 0
+                    readonly property real ph: hasPrev ? Math.round(win.vh * ps) : 0
                     x: Math.max(0, Math.min(seekItem.width - width, seekItem.hoverX - width / 2))
-                    y: -30
-                    width: tip.implicitWidth + 16; height: 24; radius: 7
+                    y: -height - 8
+                    width: Math.max(tip.implicitWidth + 16, pw + 10)
+                    height: (hasPrev ? ph + 8 : 0) + 26
+                    radius: 8
                     color: "#F0181A22"; border.color: win.cLine
-                    Text { id: tip; anchors.centerIn: parent; color: win.cInk; font.pixelSize: 12
+                    VideoOutput {
+                        id: pvo
+                        visible: tipBox.hasPrev
+                        x: (parent.width - width) / 2; y: 5
+                        width: tipBox.pw; height: tipBox.ph
+                        fillMode: VideoOutput.Stretch
+                    }
+                    Text { id: tip; anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 5 }
+                           color: win.cInk; font.pixelSize: 12
                            text: win.fmt(Math.max(0, Math.min(1, seekItem.hoverX / seekItem.width)) * player.duration) }
                 }
                 MouseArea {
@@ -926,31 +1107,38 @@ Window {
                     anchors.fill: parent
                     hoverEnabled: true
                     function seekTo(x) { if (player.duration > 0) player.setPosition(Math.max(0, Math.min(1, x / width)) * player.duration) }
-                    onPositionChanged: function (m) { seekItem.hoverX = m.x; if (pressed) seekTo(m.x) }
+                    onPositionChanged: function (m) {
+                        seekItem.hoverX = m.x
+                        win.showChrome()
+                        if (player.duration > 0) {
+                            win.previewPos = Math.max(0, Math.min(1, m.x / width)) * player.duration
+                            if (win.cfgGet("seekPreview")) { win.previewOn = true; if (!previewTimer.running) previewTimer.start() }
+                        }
+                        if (pressed) seekTo(m.x)
+                    }
                     onPressed: function (m) { seekTo(m.x) }
                 }
             }
-            Text { width: 54; height: parent.height; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; color: win.cDim; font.pixelSize: 12; text: win.fmt(player.duration) }
         }
 
         // ---- 왼쪽: 재생 ----
         Row {
-            anchors { left: parent.left; top: seekRow.bottom; leftMargin: 14; topMargin: 8 }
-            spacing: 2
-            height: 44
+            id: leftRow
+            x: 10; y: 28; height: 36
+            spacing: 1
             Btn { label: "|◀"; anchors.verticalCenter: parent.verticalCenter; enabled: win.playlist.length > 1; opacity: enabled ? 1 : 0.35; onClicked: win.prevTrack() }
             Btn { label: "⟲ 10"; anchors.verticalCenter: parent.verticalCenter; onClicked: win.skip(-10) }
             Rectangle {
-                width: 42; height: 42; radius: 21
+                width: 32; height: 32; radius: 16
                 anchors.verticalCenter: parent.verticalCenter
                 color: pma.pressed ? "#3A8EE6" : win.cAccent
                 scale: pma.containsMouse ? 1.06 : 1
                 Behavior on scale { NumberAnimation { duration: 90 } }
                 Text {
                     anchors.centerIn: parent
-                    anchors.horizontalCenterOffset: player.playbackState === MediaPlayer.PlayingState ? 0 : 2
+                    anchors.horizontalCenterOffset: player.playbackState === MediaPlayer.PlayingState ? 0 : 1.5
                     text: player.playbackState === MediaPlayer.PlayingState ? "❚❚" : "▶"
-                    color: "#06101C"; font.pixelSize: 15
+                    color: "#06101C"; font.pixelSize: 12
                 }
                 MouseArea { id: pma; anchors.fill: parent; hoverEnabled: true; onClicked: win.togglePlay() }
             }
@@ -958,42 +1146,42 @@ Window {
             Btn { label: "▶|"; anchors.verticalCenter: parent.verticalCenter; enabled: win.playlist.length > 1; opacity: enabled ? 1 : 0.35; onClicked: win.nextTrack(false) }
         }
 
-        // ---- 가운데: 보기 도구(확대 / 옆으로 보기) ----
+        // ---- 가운데: 보기 도구(확대 / 옆으로 보기 / 캡처) ----
         Row {
-            anchors { horizontalCenter: parent.horizontalCenter; top: seekRow.bottom; topMargin: 58 }
-            spacing: 2
-            height: 36
+            id: midRow
+            y: 28; height: 36
+            x: Math.max(leftRow.x + leftRow.width + 14, Math.min((bar.width - width) / 2, rightRow.x - 14 - width))
+            spacing: 1
             Btn { label: "회전"; anchors.verticalCenter: parent.verticalCenter; on: win.rot !== 0; onClicked: win.rotate() }
-            Btn { label: "좌우반전"; anchors.verticalCenter: parent.verticalCenter; on: win.flipped; onClicked: win.flip() }
-            Btn { label: "비율 " + win.aspects[win.aspectIdx][0]; anchors.verticalCenter: parent.verticalCenter; on: win.aspectIdx !== 0; onClicked: win.cycleAspect() }
-            Item { width: 8; height: 1 }
+            Btn { label: "반전"; anchors.verticalCenter: parent.verticalCenter; on: win.flipped; onClicked: win.flip() }
+            Btn { label: win.aspectIdx !== 0 ? win.aspects[win.aspectIdx][0] : "비율"; anchors.verticalCenter: parent.verticalCenter; on: win.aspectIdx !== 0; onClicked: win.cycleAspect() }
+            Item { width: 6; height: 1 }
             Btn { label: "−"; anchors.verticalCenter: parent.verticalCenter; onClicked: win.zoomBy(0.8) }
-            Btn { label: Math.round(win.zoom * 100) + "%"; width: 62; anchors.verticalCenter: parent.verticalCenter; on: win.zoom !== 1
+            Btn { label: Math.round(win.zoom * 100) + "%"; width: 50; anchors.verticalCenter: parent.verticalCenter; on: win.zoom !== 1
                   onClicked: { win.resetZoom(); win.osd("보기 초기화") } }
             Btn { label: "+"; anchors.verticalCenter: parent.verticalCenter; onClicked: win.zoomBy(1.25) }
-            Item { width: 8; height: 1 }
+            Item { width: 6; height: 1 }
             Btn { label: "캡처"; anchors.verticalCenter: parent.verticalCenter; onClicked: win.capture() }
-            Btn { label: win.aiOn ? "화질 · AI" : win.enhanceOn ? "화질 · 선명" : "화질 개선"; anchors.verticalCenter: parent.verticalCenter
-                  on: win.aiOn || win.enhanceOn || win.qualityOpen; onClicked: { win.qualityOpen = !win.qualityOpen; win.subMenuOpen = false } }
         }
 
-        // ---- 오른쪽: 속도 / 자막 / 볼륨 / 전체화면 ----
+        // ---- 오른쪽: 속도 / 슬로우 / 구간 / 반복 / 자막 / 화질 / 볼륨 / 전체화면 ----
         Row {
-            anchors { right: parent.right; top: seekRow.bottom; rightMargin: 14; topMargin: 8 }
-            spacing: 2
-            height: 44
-            Btn { label: win.speeds[win.speedIdx] + "x"; width: 52; anchors.verticalCenter: parent.verticalCenter; on: win.speeds[win.speedIdx] !== 1; onClicked: win.changeSpeed(1, true) }
-            Btn { label: win.speeds[win.speedIdx] < 1 ? "슬로우 " + win.speeds[win.speedIdx] + "x" : "슬로우"; anchors.verticalCenter: parent.verticalCenter
+            id: rightRow
+            anchors { right: parent.right; rightMargin: 10 }
+            y: 28; height: 36
+            spacing: 1
+            Btn { label: win.speeds[win.speedIdx] + "x"; width: 38; anchors.verticalCenter: parent.verticalCenter; on: win.speeds[win.speedIdx] !== 1; onClicked: win.changeSpeed(1, true) }
+            Btn { label: win.speeds[win.speedIdx] < 1 ? "슬로우 " + win.speeds[win.speedIdx] : "슬로우"; anchors.verticalCenter: parent.verticalCenter
                   on: win.speeds[win.speedIdx] < 1; onClicked: win.slowMo() }
-            Btn { label: win.loopOn ? "구간반복 중" : win.loopA >= 0 ? "A 지정됨" : "구간반복"; anchors.verticalCenter: parent.verticalCenter
+            Btn { label: win.loopOn ? "구간 중" : win.loopA >= 0 ? "A 지정" : "구간"; anchors.verticalCenter: parent.verticalCenter
                   on: win.loopA >= 0; onClicked: win.abLoop() }
-            Btn { label: win.repeatMode === 0 ? "반복" : win.repeatMode === 1 ? "전체 반복" : "한 곡 반복"; anchors.verticalCenter: parent.verticalCenter
+            Btn { label: win.repeatMode === 0 ? "반복" : win.repeatMode === 1 ? "전체반복" : "한 곡"; anchors.verticalCenter: parent.verticalCenter
                   on: win.repeatMode !== 0; onClicked: win.cycleRepeat() }
-            Btn { label: "자막"; anchors.verticalCenter: parent.verticalCenter; on: win.subSel !== -1 || win.subMenuOpen; onClicked: win.subMenuOpen = !win.subMenuOpen }
-            Item { width: 8; height: 1 }
-            Text { anchors.verticalCenter: parent.verticalCenter; color: win.cDim; font.pixelSize: 12; text: "볼륨" }
+            Btn { label: "자막"; anchors.verticalCenter: parent.verticalCenter; on: win.subSel !== -1 || win.subMenuOpen; onClicked: { win.subMenuOpen = !win.subMenuOpen; win.qualityOpen = false } }
+            Btn { label: win.aiOn ? "화질·AI" : win.enhanceOn ? "화질·선명" : "화질"; anchors.verticalCenter: parent.verticalCenter
+                  on: win.aiOn || win.enhanceOn || win.qualityOpen; onClicked: { win.qualityOpen = !win.qualityOpen; win.subMenuOpen = false } }
             Item {
-                width: 84; height: 34; anchors.verticalCenter: parent.verticalCenter
+                width: 78; height: 30; anchors.verticalCenter: parent.verticalCenter
                 Rectangle { anchors.verticalCenter: parent.verticalCenter; x: 8; width: parent.width - 16; height: 4; radius: 2; color: "#2E3240" }
                 Rectangle { anchors.verticalCenter: parent.verticalCenter; x: 8; width: (parent.width - 16) * audio.volume; height: 4; radius: 2; color: win.cInk }
                 Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 12; height: 12; radius: 6; color: "white"; x: 8 + (parent.width - 16) * audio.volume - 6 }
@@ -1006,6 +1194,7 @@ Window {
             Btn { label: win.fs ? "창 모드" : "전체화면"; anchors.verticalCenter: parent.verticalCenter; onClicked: win.toggleFs() }
         }
     }
+
 
     // ================= 화질 개선 메뉴 =================
     component HSlider: Item {
@@ -1041,8 +1230,8 @@ Window {
     Rectangle {
         id: qualityMenu
         visible: win.qualityOpen && win.chrome
-        anchors.horizontalCenter: bar.horizontalCenter
-        anchors.bottom: bar.top
+        anchors.horizontalCenter: barRef.horizontalCenter
+        anchors.bottom: barRef.top
         anchors.bottomMargin: 10
         width: 440
         height: qCol.implicitHeight + 24
@@ -1134,7 +1323,7 @@ Window {
     Rectangle {
         id: plPanel
         visible: win.plOpen && win.chrome
-        anchors { right: parent.right; rightMargin: 18; top: parent.top; topMargin: 60; bottom: bar.top; bottomMargin: 12 }
+        anchors { right: parent.right; rightMargin: 18; top: parent.top; topMargin: 60; bottom: barRef.top; bottomMargin: 12 }
         width: 350
         radius: 16
         color: "#F0141620"
@@ -1237,14 +1426,24 @@ Window {
         "<h3>반복 재생 · 설정</h3>" +
         "<p>• 하단 <b>반복</b> 버튼(또는 <b>Ctrl+R</b>)을 누를 때마다 반복 끔 → 전체 반복 → 한 곡 반복으로 바뀝니다. 영상(재생목록)이 끝나면 처음부터 자동으로 다시 재생합니다.<br>" +
         "• 상단 <b>설정</b>(또는 <b>F2</b>)에서 이어보기, 열면 바로 재생, 건너뛰기 시간, 조작바 숨김 시간, 항상 위, 자막/캡처/화질 옵션을 바꿀 수 있고 자동 저장됩니다.</p>" +
+        "<h3>오른쪽 버튼 메뉴</h3>" +
+        "<p>• 영상 위에서 <b>마우스 오른쪽 버튼</b>을 누르면 파일 열기, 재생목록에 추가, <b>파일 위치 열기(탐색기)</b>, 재생·전체화면·반복, 자막 열기, 캡처, 화질 개선, 설정을 바로 쓸 수 있는 메뉴가 나옵니다. 오른쪽에 단축키가 같이 표시됩니다.</p>" +
+        "<h3>화면 비율 · 미리보기</h3>" +
+        "<p>• 영상을 열면 영상 안의 <b>회전 정보</b>(세로로 찍은 핸드폰 영상 등)를 읽어 원래 비율 그대로 자동으로 맞춰 보여줍니다.<br>" +
+        "• 탐색 막대에 마우스를 올리면 그 시간의 <b>장면 미리보기</b>가 뜹니다. (설정에서 끌 수 있음)</p>" +
+        "<h3>조작 패널 크기 · 투명도</h3>" +
+        "<p>• <b>설정(F2)</b>에서 조작 패널 크기(70~110%)와 투명도(20~100%)를 바꿉니다. 단축키: 크기 <b>Ctrl+[ ]</b>, 투명도 <b>Alt+[ ]</b>.<br>" +
+        "• 전체화면에서 <b>Esc</b>(또는 Enter)를 누르면 작은 창(1100x620)으로 돌아옵니다. 설정에서 끌 수 있습니다.</p>" +
         "<h3>캡처 · 전체화면</h3>" +
-        "<p>• <b>캡처</b> 버튼(또는 <b>C</b> 키): 지금 보이는 장면을 영상 <b>원본 크기</b> 그대로 PNG 로 저장합니다. 저장 위치: <b>사진 \\ Player64X</b> 폴더<br>" +
+        "<p>• <b>캡처</b> 버튼(또는 <b>C</b> 키): 지금 보이는 장면을 영상 <b>원본 크기</b> 그대로 저장합니다. 저장 위치는 기본 <b>사진 \\ Player64X</b> 이고, <b>설정(F2) → 캡처 저장 위치</b>에서 바꾸거나 열 수 있습니다.<br>" +
         "• <b>Enter</b> 키(또는 더블클릭, F 키): 화면을 크게(전체화면). <b>Esc</b> 로 돌아옵니다.</p>" +
         "<h3>자막</h3>" +
         "<p>• 영상과 같은 이름의 자막 파일(SRT · SMI · VTT · ASS)이 있으면 자동으로 불러옵니다. 자막 파일을 창에 끌어놓아도 됩니다.<br>" +
         "• <b>자막</b> 메뉴에서 언어 선택, 글자 크기, 싱크(±0.5초)를 조절하세요. 영상에 내장된 자막도 고를 수 있습니다.<br>" +
         "• <b>실시간 자동 자막</b>: Windows 11 실시간 캡션을 켭니다. 언어는 캡션 창의 ⚙ 설정에서 고릅니다.</p>" +
         "<h3>재생목록</h3>" +
+        "<p>• 영상을 창에 <b>끌어놓으면</b> 재생목록에 추가되고(이미 있으면 그 영상으로 이동) 재생목록 창이 열리며 첫 영상이 재생됩니다.</p>" +
+        "<p>• 영상을 끌어놓거나 열면 재생목록에 <b>자동 저장</b>되어, 프로그램을 다시 켜도 그 목록이 남고 마지막 영상이 멈춘 상태로 열립니다. (설정에서 끌 수 있음)</p>" +
         "<p>• 상단 <b>재생목록</b> 에서 목록을 보고, 항목 클릭으로 재생, ✕ 로 제거, <b>추가</b> 로 파일을 더할 수 있습니다.<br>" +
         "• <b>다음/이전</b> 버튼, 반복(끔 · 전체 · 한 곡), 셔플을 지원합니다.</p>" +
         "<h3>단축키</h3>" +
@@ -1356,6 +1555,18 @@ Window {
                                         }
                                     }
                                 }
+                                // 폴더 선택
+                                Row {
+                                    visible: setRow.d.type === "folder"
+                                    anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                                    spacing: 2
+                                    Text { width: 250; height: 34; verticalAlignment: Text.AlignVCenter; elide: Text.ElideMiddle
+                                           text: win.cfgGet("capDir") !== "" ? win.cfgGet("capDir") : "사진\\Player64X (기본)"
+                                           color: win.cfgGet("capDir") !== "" ? win.cInk : win.cDim; font.pixelSize: 12 }
+                                    Btn { label: "변경…"; onClicked: Qt.callLater(function () { var d = backend.pickFolder(win.cfgGet("capDir")); if (d !== "") win.setCfg("capDir", d) }) }
+                                    Btn { label: "열기"; onClicked: Qt.callLater(function () { win.osd("폴더 열기 · " + backend.openCaptureFolder()) }) }
+                                    Btn { label: "기본"; visible: win.cfgGet("capDir") !== ""; onClicked: win.setCfg("capDir", "") }
+                                }
                                 // 숫자 조절
                                 Row {
                                     visible: setRow.d.type === "step"
@@ -1418,9 +1629,9 @@ Window {
     Rectangle {
         id: subMenu
         visible: win.subMenuOpen && win.chrome
-        anchors.right: bar.right
+        anchors.right: barRef.right
         anchors.rightMargin: 90
-        anchors.bottom: bar.top
+        anchors.bottom: barRef.top
         anchors.bottomMargin: 10
         width: 372
         height: menuCol.implicitHeight + 20
@@ -1458,7 +1669,7 @@ Window {
                 color: oma.containsMouse ? win.cHover : "transparent"
                 Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
                        text: "자막 파일 열기…  (SRT · SMI · VTT · ASS)"; color: win.cInk; font.pixelSize: 13 }
-                MouseArea { id: oma; anchors.fill: parent; hoverEnabled: true; onClicked: win.openSubDialog() }
+                MouseArea { id: oma; anchors.fill: parent; hoverEnabled: true; onClicked: { win.subMenuOpen = false; Qt.callLater(win.openSubDialog) } }
             }
             Rectangle {
                 width: menuCol.width; height: 52; radius: 8
@@ -1494,7 +1705,7 @@ Window {
     Timer {
         id: hideTimer
         interval: 2800
-        onTriggered: if (player.playbackState === MediaPlayer.PlayingState && !barArea.containsMouse && !win.subMenuOpen && !win.qualityOpen) win.chrome = false
+        onTriggered: if (player.playbackState === MediaPlayer.PlayingState && !barHover.hovered && !win.subMenuOpen && !win.qualityOpen) win.chrome = false
     }
 
     // ================= 창 가장자리 크기 조절 =================
@@ -1514,6 +1725,52 @@ Window {
     Edge { edges: Qt.RightEdge | Qt.TopEdge; width: 8; height: 8; anchors { right: parent.right; top: parent.top } cursorShape: Qt.SizeBDiagCursor }
     Edge { edges: Qt.LeftEdge | Qt.BottomEdge; width: 8; height: 8; anchors { left: parent.left; bottom: parent.bottom } cursorShape: Qt.SizeBDiagCursor }
 
+    // ================= 오른쪽 버튼 메뉴 =================
+    MouseArea {
+        anchors.fill: parent
+        visible: win.ctxOpen
+        z: 39
+        acceptedButtons: Qt.AllButtons
+        onPressed: win.ctxOpen = false
+    }
+    Rectangle {
+        id: ctxMenu
+        visible: win.ctxOpen
+        z: 40
+        x: win.ctxX; y: win.ctxY
+        width: 256
+        height: ctxCol.implicitHeight + 12
+        radius: 12
+        color: "#F2141620"
+        border.color: win.cLine
+        Column {
+            id: ctxCol
+            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 6 }
+            spacing: 1
+            Repeater {
+                model: win.ctxItems
+                delegate: Item {
+                    readonly property var it: modelData
+                    width: ctxCol.width
+                    height: it.sep === true ? 9 : 30
+                    Rectangle { visible: it.sep === true; anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 6; rightMargin: 6 }
+                                height: 1; color: win.cLine }
+                    Rectangle {
+                        visible: it.sep !== true
+                        anchors.fill: parent; radius: 7
+                        color: cma.containsMouse ? win.cHover : "transparent"
+                        Text { anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
+                               text: win.ctxLabel(it) !== undefined ? win.ctxLabel(it) : ""; color: win.cInk; font.pixelSize: 13 }
+                        Text { anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                               visible: it.id !== undefined && win.keymap[it.id] !== undefined && win.keymap[it.id] !== ""
+                               text: it.id !== undefined ? win.keyLabel(it.id) : ""; color: win.cDim; font.pixelSize: 11 }
+                        MouseArea { id: cma; anchors.fill: parent; hoverEnabled: true; onClicked: win.ctxDo(it.id) }
+                    }
+                }
+            }
+        }
+    }
+
     // ================= 키보드 =================
     Item {
         anchors.fill: parent
@@ -1521,7 +1778,7 @@ Window {
         Keys.onPressed: function (e) {
             e.accepted = true
             var name = win.keyName(e)
-            if (name === "") return                       // Shift/Ctrl 등 단독 키
+            if (name === "" && e.key !== Qt.Key_Escape) return   // Shift/Ctrl 등 단독 키 (Esc 는 아래에서 처리)
 
             // 단축키 입력 대기 중
             if (win.capId !== "") {
@@ -1532,7 +1789,8 @@ Window {
             }
             // Esc: 열려 있는 창 → 전체화면 순서로 닫기
             if (e.key === Qt.Key_Escape) {
-                if (win.helpOpen) win.helpOpen = false
+                if (win.ctxOpen) win.ctxOpen = false
+                else if (win.helpOpen) win.helpOpen = false
                 else if (win.qualityOpen) win.qualityOpen = false
                 else if (win.subMenuOpen) win.subMenuOpen = false
                 else if (win.plOpen) win.plOpen = false
@@ -1554,6 +1812,7 @@ Window {
         loadKeys()
         if (cfgGet("aiAtStart")) setAi(true)
         if (backend.startFiles.length > 0) setPlaylist(backend.startFiles, 0)
+        else if (cfgGet("rememberPlaylist")) restorePlaylist()
         hideTimer.restart()
     }
 }

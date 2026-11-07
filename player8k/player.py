@@ -12,6 +12,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QFileDialog
 
 import subs
+import ai_engine
 from ai_engine import AiEngine
 
 FILTER = ("동영상 (*.mp4 *.mkv *.avi *.mov *.wmv *.webm *.ts *.m2ts *.mts *.flv *.m4v *.mpg *.mpeg *.3gp);;"
@@ -74,6 +75,16 @@ class Backend(QObject):
         """끌어놓은 파일/폴더 URL -> 재생할 동영상 URL 목록"""
         return to_urls(expand_paths([QUrl(u).toLocalFile() for u in urls]))
 
+    @Slot("QVariantList", result="QVariantList")
+    def existingUrls(self, urls):
+        """저장해 둔 재생목록에서 지금도 있는 파일만 남김"""
+        out = []
+        for u in urls:
+            p = QUrl(str(u)).toLocalFile()
+            if p and os.path.isfile(p):
+                out.append(str(u))
+        return out
+
     @Slot(str, result="QVariantList")
     def findSubtitles(self, video_url):
         path = QUrl(video_url).toLocalFile()
@@ -109,8 +120,7 @@ class Backend(QObject):
             if img.isNull():
                 print("capture: 프레임 변환 실패", frame.pixelFormat(), frame.size(), file=sys.stderr)
                 return ""
-            folder = os.path.join(QStandardPaths.writableLocation(QStandardPaths.PicturesLocation), "Player64X")
-            os.makedirs(folder, exist_ok=True)
+            folder = ai_engine.pictures_dir()
             stem = re.sub(r'[\\/:*?"<>|]', "_", os.path.splitext(name)[0]) or "capture"
             t = f"{ms // 3600000:02d}-{ms // 60000 % 60:02d}-{ms // 1000 % 60:02d}-{ms % 1000:03d}"
             jpg = str(fmt).lower() in ("jpg", "jpeg")
@@ -123,7 +133,7 @@ class Backend(QObject):
             if img.hasAlphaChannel():
                 img = img.convertToFormat(QImage.Format_RGB32)  # 불투명 영상: 알파 제거
             if img.save(path, "JPG", 95) if jpg else img.save(path, "PNG", 80):
-                return os.path.basename(path)
+                return path
             print("capture: 저장 실패", path, img.format(), img.size(), file=sys.stderr)
             return ""
         except Exception as e:  # 캡처 실패 원인은 콘솔에 남김
@@ -146,6 +156,43 @@ class Backend(QObject):
                 f.write(text)
         except OSError:
             pass
+
+    @Slot(str)
+    def setCaptureDir(self, path):
+        ai_engine.CAPTURE_DIR = os.path.normpath(path) if path else ""
+
+    @Slot(str, result=str)
+    def pickFolder(self, current):
+        """캡처 저장 폴더 고르기 (취소하면 빈 문자열)"""
+        start = current if current and os.path.isdir(current) else ai_engine.default_capture_dir()
+        d = QFileDialog.getExistingDirectory(None, "캡처 저장 폴더 선택", start)
+        return os.path.normpath(d) if d else ""
+
+    @Slot(result=str)
+    def openCaptureFolder(self):
+        """캡처 저장 폴더를 탐색기로 열고, 그 경로를 돌려준다"""
+        d = ai_engine.pictures_dir()
+        os.startfile(d)
+        return d
+
+    @Slot(QVideoSink, result=int)
+    def frameRotation(self, sink):
+        """영상 자체의 회전(0/90/180/270). 아직 프레임이 없으면 -1."""
+        try:
+            f = sink.videoFrame()
+            if not f.isValid():
+                return -1
+            r = f.surfaceFormat().rotation()
+            return int(getattr(r, "value", 0)) % 360
+        except Exception:
+            return -1
+
+    @Slot(str)
+    def revealFile(self, url):
+        """탐색기에서 해당 파일을 선택한 상태로 열기"""
+        path = QUrl(url).toLocalFile()
+        if path and os.path.exists(path):
+            subprocess.Popen('explorer /select,"%s"' % os.path.normpath(path))
 
     @Slot(result=str)
     def loadKeys(self):

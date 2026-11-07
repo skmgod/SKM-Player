@@ -80,9 +80,20 @@ def find_ai_python():
     return None
 
 
+CAPTURE_DIR = ""      # 설정에서 고른 캡처 저장 폴더 (비어 있으면 사진\Player64X)
+
+
+def default_capture_dir():
+    return os.path.join(QStandardPaths.writableLocation(QStandardPaths.PicturesLocation), "Player64X")
+
+
 def pictures_dir():
-    d = os.path.join(QStandardPaths.writableLocation(QStandardPaths.PicturesLocation), "Player64X")
-    os.makedirs(d, exist_ok=True)
+    d = CAPTURE_DIR or default_capture_dir()
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:          # 고른 폴더를 쓸 수 없으면(USB 빠짐 등) 기본 위치로
+        d = default_capture_dir()
+        os.makedirs(d, exist_ok=True)
     return d
 
 
@@ -289,7 +300,7 @@ class AiEngine(QObject):
                         path = os.path.join(pictures_dir(), f"{stem}_{t}_AI{sc}x_{n}.png")
                         n += 1
                     ok = img.save(path, "PNG", 80)
-                    self.captureDone.emit(f"AI 캡처 저장됨 · {w}x{hh} → {w2}x{h2} · 사진\\Player64X\\{os.path.basename(path)}"
+                    self.captureDone.emit(f"AI 캡처 저장됨 · {w}x{hh} → {w2}x{h2} · {path}"
                                           if ok else "AI 캡처 저장에 실패했습니다")
                     self._set_status(f"실시간 AI 대기 중 · {self._gpu}" if self._rt else f"AI 엔진 준비됨 · {self._gpu}")
         except Exception as e:
